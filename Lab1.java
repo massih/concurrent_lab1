@@ -4,7 +4,7 @@ import java.util.concurrent.Semaphore;
 
 public class Lab1 {
 	final int defaultSimSpeed = 100;
-	final int maxSpeed = 15;
+	final int maxSpeed = 20;
 	int simSpeed, tr1Speed, tr2Speed;
 	trainController tr1, tr2;
 
@@ -57,9 +57,9 @@ class trainController extends Thread {
 	private TSimInterface tsi;
 	private boolean direction;
 	private Semaphore[] semaphores;
-	private int holdingSem;
+	private int holdingSem[] = {-1,-1};
 	private int semIndex = 0;
-	private int sensorIndex = 0;
+	private int sensorIndex = -1;
 
 	AddingArrayList<Semaphore> semList;
 	AddingArrayList<SensorEvent> sensorsList;
@@ -75,11 +75,11 @@ class trainController extends Thread {
 		try {
 			if (trId == 1) {
 				semaphores[0].acquire();
-				holdingSem = 0;
+				holdingSem[0] = 0;
 				semList.set(semIndex, semaphores[0]);
 			} else {
 				semaphores[6].acquire();
-				holdingSem = 6;
+				holdingSem[0] = 6;
 				semList.set(semIndex, semaphores[6]);
 			}
 		} catch (InterruptedException e) {
@@ -93,13 +93,22 @@ class trainController extends Thread {
 			tsi.setSpeed(trId, trSpeed);
 			while (true) {
 				startTime = System.currentTimeMillis() / 1000;
-				sensorsList.set(sensorIndex, tsi.getSensor(trId));
-				Semaphore next = whichSemaphore();
-				int n = 0;
-				while(!next.equals(semaphores[n])){
-					n++;
+				sensorIndex ++;
+				SensorEvent sen = tsi.getSensor(trId);
+				if(sen.getStatus() == SensorEvent.ACTIVE){
+					sensorsList.set(sensorIndex, tsi.getSensor(trId));
+					int next = whichSemaphore();
+					System.err.println("chosen semaphor: "+ next+" by "+ trId);
+					if(semaphores[next].availablePermits() == 0){
+						tsi.setSpeed(trId, 0);
+					}
+					semaphores[next].acquire();
+					semIndex++;
+					semList.set(semIndex, semaphores[next]);
+					addHolding(next);
+					semaphores[holdingSem[1]].release();	
 				}
-				System.err.println("chosen semaphor: "+ n+" by "+ trId);
+				
 			}
 		} catch (CommandException | InterruptedException e) {
 			System.err.println(e.getMessage());
@@ -107,21 +116,31 @@ class trainController extends Thread {
 		}
 	}
 
-	private Semaphore whichSemaphore() {
+	private int whichSemaphore() {
 		SensorEvent currentSensor = sensorsList.get(sensorIndex);
 		Semaphore lastSem = semList.get(semIndex);
-		Semaphore ret = null;
+		int ret = -1;
 		
 		if (currentSensor.getYpos() >= 11) {
 			if(semIndex == 0){
-				ret = semaphores[5];				
+				ret = 5;				
+			}else{
+				if(!currentSensor.equals(sensorsList.get(sensorIndex-1))){
+//					SHOULD STOP
+				}else{
+					ret = 5;
+				}
 			}
-//			BASED ON PREVIOUS SENSOR
 		} else if (currentSensor.getYpos() <= 5) {
 			if(semIndex == 0){
-				ret = semaphores[1];
+				ret = 2;
+			}else{
+				if(!currentSensor.equals(sensorsList.get(sensorIndex-1))){
+//					SHOULD STOP
+				}else{
+					ret = 2;
+				}
 			}
-//			BASED ON PREVIOUS SENSOR
 		}else{
 			int prev = 0,current =0;
 			while(!semList.get(semIndex-1).equals(semaphores[prev])){
@@ -130,10 +149,27 @@ class trainController extends Thread {
 			while(!lastSem.equals(semaphores[current])){
 				current++;
 			}
-			if(prev<current){
-				ret = semaphores[current+1];
+			if(current == 3){
+				if(prev == 2){
+					ret = 4;
+				}else{
+					if(semaphores[0].availablePermits() == 1){
+						ret = 0;
+					}else if (semaphores[1].availablePermits() == 1){
+						ret = 1;
+					}
+				}
+			}else if(current == 2){
+				ret = 3;
+				
+			}else if(current == 0 || current == 1){
+				ret = 2;
 			}else{
-				ret = semaphores[current-1];
+				if(prev<current){
+					ret = current+1;
+				}else{
+					ret = current-1;
+				}
 			}			
 		}
 		
@@ -180,5 +216,9 @@ class trainController extends Thread {
 //		}
 		return ret;
 	}
-
+	private void addHolding(int current){
+		holdingSem[1] = holdingSem[0];
+		holdingSem[0] = current;
+		
+	}
 }
