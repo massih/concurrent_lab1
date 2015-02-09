@@ -3,7 +3,7 @@ import TSim.*;
 import java.util.concurrent.Semaphore;
 
 public class Lab1 {
-	final int defaultSimSpeed = 100;
+	final static int defaultSimSpeed = 100;
 	final int maxSpeed = 20;
 	int simSpeed, tr1Speed, tr2Speed;
 	trainController tr1, tr2;
@@ -14,7 +14,7 @@ public class Lab1 {
 
 	public Lab1(String[] args) {
 		checkArgs(args);
-		Semaphore[] semaphores = new Semaphore[7];
+		Semaphore[] semaphores = new Semaphore[6];
 		for (int i = 0; i < semaphores.length; i++) {
 			semaphores[i] = new Semaphore(1);
 		}
@@ -37,6 +37,8 @@ public class Lab1 {
 			simSpeed = defaultSimSpeed;
 			break;
 		case 3:
+			System.err.println(" PARAMETERS ******  " + args[0] + " - "
+					+ args[1] + " - " + args[2]);
 			tr1Speed = Integer.parseInt(args[0]);
 			tr2Speed = Integer.parseInt(args[1]);
 			simSpeed = Integer.parseInt(args[2]);
@@ -51,17 +53,17 @@ public class Lab1 {
 }
 
 class trainController extends Thread {
-	private final int trSpeed;
+	private final int RIGHT = TSimInterface.SWITCH_RIGHT;
+	private final int LEFT = TSimInterface.SWITCH_LEFT;
+	private final int ACTIVE = SensorEvent.ACTIVE;
+	private final int INACTIVE = SensorEvent.INACTIVE;
+	private int trSpeed;
 	private final int trId;
-	private long startTime;
 	private TSimInterface tsi;
-	private boolean direction;
+//	private boolean alterRoute;
 	private Semaphore[] semaphores;
-	private int holdingSem[] = {-1,-1};
-	private int semIndex = 0;
 	private int sensorIndex = -1;
 
-	AddingArrayList<Semaphore> semList;
 	AddingArrayList<SensorEvent> sensorsList;
 
 	public trainController(int id, int speed, Semaphore[] allSem) {
@@ -70,45 +72,30 @@ class trainController extends Thread {
 		tsi = TSimInterface.getInstance();
 		tsi.setDebug(true);
 		sensorsList = new AddingArrayList<>();
-		semList = new AddingArrayList<>();
 		semaphores = allSem;
 		try {
 			if (trId == 1) {
 				semaphores[0].acquire();
-				holdingSem[0] = 0;
-				semList.set(semIndex, semaphores[0]);
 			} else {
-				semaphores[6].acquire();
-				holdingSem[0] = 6;
-				semList.set(semIndex, semaphores[6]);
+				semaphores[5].acquire();
 			}
 		} catch (InterruptedException e) {
 			System.err.println(e.getMessage());
 		}
-		// semIndex++;
 	}
 
 	public void run() {
 		try {
 			tsi.setSpeed(trId, trSpeed);
 			while (true) {
-				startTime = System.currentTimeMillis() / 1000;
-				sensorIndex ++;
+
 				SensorEvent sen = tsi.getSensor(trId);
-				if(sen.getStatus() == SensorEvent.ACTIVE){
-					sensorsList.set(sensorIndex, tsi.getSensor(trId));
-					int next = whichSemaphore();
-					System.err.println("chosen semaphor: "+ next+" by "+ trId);
-					if(semaphores[next].availablePermits() == 0){
-						tsi.setSpeed(trId, 0);
-					}
-					semaphores[next].acquire();
-					semIndex++;
-					semList.set(semIndex, semaphores[next]);
-					addHolding(next);
-					semaphores[holdingSem[1]].release();	
+				if (sen.getStatus() == ACTIVE) {
+					sensorIndex++;
+					sensorsList.set(sensorIndex, sen);
+					whichSemaphore();
 				}
-				
+
 			}
 		} catch (CommandException | InterruptedException e) {
 			System.err.println(e.getMessage());
@@ -116,109 +103,155 @@ class trainController extends Thread {
 		}
 	}
 
-	private int whichSemaphore() {
+	private int whichSemaphore() throws InterruptedException, CommandException {
 		SensorEvent currentSensor = sensorsList.get(sensorIndex);
-		Semaphore lastSem = semList.get(semIndex);
 		int ret = -1;
-		
-		if (currentSensor.getYpos() >= 11) {
-			if(semIndex == 0){
-				ret = 5;				
-			}else{
-				if(!currentSensor.equals(sensorsList.get(sensorIndex-1))){
-//					SHOULD STOP
-				}else{
-					ret = 5;
+		if (sensorIndex > 1) {
+//			System.err.println("************HERE************" + trId);
+			SensorEvent prevSen = sensorsList.get(sensorIndex - 1);
+			switch (currentSensor.getXpos()) {
+			case 14:
+				switch (currentSensor.getYpos()) {
+				case 3:
+				case 5:
+					if (prevSen.getXpos() == 8 || prevSen.getXpos() == 6) {
+						stopTrain();
+					}
+					break;
+				case 11:
+				case 13:
+					if (prevSen.getXpos() == 6) {
+						stopTrain();
+					}
+					break;
+				default:
+					System.exit(0);
+					break;
 				}
-			}
-		} else if (currentSensor.getYpos() <= 5) {
-			if(semIndex == 0){
-				ret = 2;
-			}else{
-				if(!currentSensor.equals(sensorsList.get(sensorIndex-1))){
-//					SHOULD STOP
-				}else{
-					ret = 2;
-				}
-			}
-		}else{
-			int prev = 0,current =0;
-			while(!semList.get(semIndex-1).equals(semaphores[prev])){
-				prev++;
-			}
-			while(!lastSem.equals(semaphores[current])){
-				current++;
-			}
-			if(current == 3){
-				if(prev == 2){
-					ret = 4;
-				}else{
-					if(semaphores[0].availablePermits() == 1){
-						ret = 0;
-					}else if (semaphores[1].availablePermits() == 1){
-						ret = 1;
+
+				break;
+			case 12:
+				if (prevSen.getXpos() == 19) {
+					semaphores[2].release();
+					waitForSem(1);
+				} else {
+					semaphores[1].release();
+					waitForSem(2);
+					if (currentSensor.getYpos() == 7) {
+						tsi.setSwitch(17, 7, RIGHT);
+					} else {
+						tsi.setSwitch(17, 7, LEFT);
 					}
 				}
-			}else if(current == 2){
-				ret = 3;
-				
-			}else if(current == 0 || current == 1){
-				ret = 2;
-			}else{
-				if(prev<current){
-					ret = current+1;
+
+				break;
+			case 10:
+				if(prevSen.getXpos() == 1){
+					semaphores[4].release();
+					waitForSem(2);
+					if(currentSensor.getYpos() == 9){
+						tsi.setSwitch(15, 9, RIGHT);
+					}else{
+						tsi.setSwitch(15, 9, LEFT);
+					}
 				}else{
-					ret = current-1;
+					semaphores[2].release();
+					waitForSem(4);
+					if(currentSensor.getYpos() == 9){
+						tsi.setSwitch(4, 9, LEFT);
+					}else{
+						tsi.setSwitch(4, 9, RIGHT);
+					}
 				}
-			}			
+				break;
+			case 6:
+				if(currentSensor.getYpos() == 5){
+					if(prevSen.getXpos() == 14){
+						waitForSem(1);
+					}else{
+						semaphores[1].release();
+					}
+				}else{
+					if(prevSen.getXpos() == 14){
+						waitForSem(4);
+						if(currentSensor.getYpos() == 11){
+							tsi.setSwitch(3, 11, LEFT);
+						}else{
+							tsi.setSwitch(3, 11, RIGHT);
+						}
+					}else{
+						semaphores[4].release();
+					}
+				}
+				break;
+			case 8:
+				if(prevSen.getXpos() == 14){
+					waitForSem(1);
+				}else{
+					semaphores[1].release();
+				}
+				break;
+			case 1:
+				if(prevSen.getXpos() == 10){
+					if(prevSen.getYpos() == 9){
+						semaphores[3].release();
+					}
+					if(semaphores[5].tryAcquire()){
+						tsi.setSwitch(3, 11, LEFT);
+					}else{
+						tsi.setSwitch(3, 11, RIGHT);
+					}
+				}else{
+					if(prevSen.getYpos() == 11){
+						semaphores[5].release();
+					}
+					if(semaphores[3].tryAcquire()){
+						tsi.setSwitch(4, 9, LEFT);
+					}else{
+						tsi.setSwitch(4, 9, RIGHT);
+					}
+				}
+				break;
+			case 19:
+				if(prevSen.getXpos() == 12){
+					if(prevSen.getYpos() == 7){
+						semaphores[0].release();
+					}
+					if(semaphores[3].tryAcquire()){
+						tsi.setSwitch(15, 9, RIGHT);
+					}else{
+						tsi.setSwitch(15, 9, LEFT);
+					}
+				}else{
+					if(prevSen.getYpos() == 9){
+						semaphores[3].release();
+					}
+					if(semaphores[0].tryAcquire()){
+						tsi.setSwitch(17, 7, RIGHT);
+					}else{
+						tsi.setSwitch(17, 7, LEFT);
+					}
+				}
+				break;
+			default:
+				break;
+			}
 		}
-		
-		
-		
-//		if (sensorIndex == 0) {
-//			if (semIndex == 0) {
-//				if (currentSensor.getYpos() >= 11) {
-//					ret = semaphores[5];
-//				} else if (currentSensor.getYpos() <= 5) {
-//					ret = semaphores[1];
-//				}
-//			} else {
-//				if (lastSem.equals(semaphores[6])
-//						|| lastSem.equals(semaphores[5])) {
-//					ret = semaphores[5];
-//				} else if (lastSem.equals(semaphores[0])
-//						|| lastSem.equals(semaphores[1])) {
-//					ret = semaphores[1];
-//				}
-//			}
-//		} else {
-//			if(semIndex == 0){
-//				if(lastSem.equals(semaphores[1])){
-//					ret = semaphores[2];
-//				}else if(lastSem.equals(semaphores[5])){
-//					ret = semaphores[4];
-//				}
-//			}else{
-//				int prev = 0,current =0;
-//				while(!semList.get(semIndex-1).equals(semaphores[prev])){
-//					prev++;
-//				}
-//				while(!lastSem.equals(semaphores[current])){
-//					current++;
-//				}
-//				if(prev<current){
-//					ret = semaphores[current+1];
-//				}else{
-//					ret = semaphores[current-1];
-//				}
-//			}
-//			
-//		}
 		return ret;
 	}
-	private void addHolding(int current){
-		holdingSem[1] = holdingSem[0];
-		holdingSem[0] = current;
-		
+
+	private void stopTrain() throws CommandException, InterruptedException {
+		tsi.setSpeed(trId, 0);
+		sleep(2 * Lab1.defaultSimSpeed * Math.abs(trSpeed));
+		trSpeed = -1 * trSpeed;
+		tsi.setSpeed(trId, trSpeed);
+	}
+
+	private void waitForSem(int i) throws CommandException,
+			InterruptedException {
+		tsi.setSpeed(trId, 0);
+		semaphores[i].acquire();
+		System.err.println("*********************acquired :" + i + " id: "+ trId);
+		tsi.setSpeed(trId, trSpeed);
 	}
 }
