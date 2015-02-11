@@ -18,8 +18,9 @@ public class Lab1 {
 		for (int i = 0; i < semaphores.length; i++) {
 			semaphores[i] = new Semaphore(1);
 		}
-		tr1 = new trainController(1, tr1Speed, semaphores);
-		tr2 = new trainController(2, tr2Speed, semaphores);
+		TSimInterface tsim = TSimInterface.getInstance();
+		tr1 = new trainController(1, tr1Speed, semaphores,tsim);
+		tr2 = new trainController(2, tr2Speed, semaphores, tsim);
 		tr1.start();
 		tr2.start();
 	}
@@ -56,20 +57,20 @@ class trainController extends Thread {
 	private final int RIGHT = TSimInterface.SWITCH_RIGHT;
 	private final int LEFT = TSimInterface.SWITCH_LEFT;
 	private final int ACTIVE = SensorEvent.ACTIVE;
-	private final int INACTIVE = SensorEvent.INACTIVE;
+//	private final int INACTIVE = SensorEvent.INACTIVE;
 	private int trSpeed;
 	private final int trId;
 	private TSimInterface tsi;
 //	private boolean alterRoute;
-	private Semaphore[] semaphores;
+	private final Semaphore[] semaphores;
 	private int sensorIndex = -1;
 
 	AddingArrayList<SensorEvent> sensorsList;
 
-	public trainController(int id, int speed, Semaphore[] allSem) {
+	public trainController(int id, int speed, Semaphore[] allSem,TSimInterface tsim) {
 		trSpeed = speed;
 		trId = id;
-		tsi = TSimInterface.getInstance();
+		tsi = tsim;
 		tsi.setDebug(true);
 		sensorsList = new AddingArrayList<>();
 		semaphores = allSem;
@@ -80,7 +81,7 @@ class trainController extends Thread {
 				semaphores[5].acquire();
 			}
 		} catch (InterruptedException e) {
-			System.err.println(e.getMessage());
+			System.err.println("DDDD"+e.getMessage());
 		}
 	}
 
@@ -97,8 +98,11 @@ class trainController extends Thread {
 				}
 
 			}
-		} catch (CommandException | InterruptedException e) {
-			System.err.println(e.getMessage());
+		} catch (CommandException e) {
+			System.err.println("MY  "+e.getMessage());
+			System.exit(1);
+		}catch (InterruptedException  e2) {
+			System.err.println("FF"+e2.getMessage());
 			System.exit(1);
 		}
 	}
@@ -107,7 +111,6 @@ class trainController extends Thread {
 		SensorEvent currentSensor = sensorsList.get(sensorIndex);
 		int ret = -1;
 		if (sensorIndex > 1) {
-//			System.err.println("************HERE************" + trId);
 			SensorEvent prevSen = sensorsList.get(sensorIndex - 1);
 			switch (currentSensor.getXpos()) {
 			case 14:
@@ -125,7 +128,7 @@ class trainController extends Thread {
 					}
 					break;
 				default:
-					System.exit(0);
+					System.err.println("7777777777777777");
 					break;
 				}
 
@@ -133,9 +136,11 @@ class trainController extends Thread {
 			case 12:
 				if (prevSen.getXpos() == 19) {
 					semaphores[2].release();
+					System.err.println("*********************released :" + 2 + " id: "+ trId);
 					waitForSem(1);
 				} else {
 					semaphores[1].release();
+					System.err.println("*********************released :" + 1 + " id: "+ trId);
 					waitForSem(2);
 					if (currentSensor.getYpos() == 7) {
 						tsi.setSwitch(17, 7, RIGHT);
@@ -148,6 +153,7 @@ class trainController extends Thread {
 			case 10:
 				if(prevSen.getXpos() == 1){
 					semaphores[4].release();
+					System.err.println("*********************released :" + 4 + " id: "+ trId);
 					waitForSem(2);
 					if(currentSensor.getYpos() == 9){
 						tsi.setSwitch(15, 9, RIGHT);
@@ -156,6 +162,7 @@ class trainController extends Thread {
 					}
 				}else{
 					semaphores[2].release();
+					System.err.println("*********************released :" + 2 + " id: "+ trId);
 					waitForSem(4);
 					if(currentSensor.getYpos() == 9){
 						tsi.setSwitch(4, 9, LEFT);
@@ -170,10 +177,12 @@ class trainController extends Thread {
 						waitForSem(1);
 					}else{
 						semaphores[1].release();
+						System.err.println("*********************released :" + 1 + " id: "+ trId);
 					}
 				}else{
 					if(prevSen.getXpos() == 14){
 						waitForSem(4);
+//						semaphores[4].acquire();
 						if(currentSensor.getYpos() == 11){
 							tsi.setSwitch(3, 11, LEFT);
 						}else{
@@ -181,6 +190,7 @@ class trainController extends Thread {
 						}
 					}else{
 						semaphores[4].release();
+						System.err.println("*********************released :" + 4 + " id: "+ trId);
 					}
 				}
 				break;
@@ -189,12 +199,14 @@ class trainController extends Thread {
 					waitForSem(1);
 				}else{
 					semaphores[1].release();
+					System.err.println("*********************released :" + 1 + " id: "+ trId);
 				}
 				break;
 			case 1:
 				if(prevSen.getXpos() == 10){
 					if(prevSen.getYpos() == 9){
 						semaphores[3].release();
+						System.err.println("*********************released :" + 3 + " id: "+ trId);
 					}
 					if(semaphores[5].tryAcquire()){
 						tsi.setSwitch(3, 11, LEFT);
@@ -204,6 +216,7 @@ class trainController extends Thread {
 				}else{
 					if(prevSen.getYpos() == 11){
 						semaphores[5].release();
+						System.err.println("*********************released :" + 5 + " id: "+ trId);
 					}
 					if(semaphores[3].tryAcquire()){
 						tsi.setSwitch(4, 9, LEFT);
@@ -216,6 +229,7 @@ class trainController extends Thread {
 				if(prevSen.getXpos() == 12){
 					if(prevSen.getYpos() == 7){
 						semaphores[0].release();
+						System.err.println("*********************released :" + 0 + " id: "+ trId);
 					}
 					if(semaphores[3].tryAcquire()){
 						tsi.setSwitch(15, 9, RIGHT);
@@ -245,6 +259,7 @@ class trainController extends Thread {
 		sleep(2 * Lab1.defaultSimSpeed * Math.abs(trSpeed));
 		trSpeed = -1 * trSpeed;
 		tsi.setSpeed(trId, trSpeed);
+		System.err.println("========================= AT STATION :"+ " id: "+ trId);
 	}
 
 	private void waitForSem(int i) throws CommandException,
